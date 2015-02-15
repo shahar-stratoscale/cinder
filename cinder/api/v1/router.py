@@ -27,6 +27,7 @@ from cinder.api.v1 import snapshots
 from cinder.api.v1 import types
 from cinder.api.v1 import volume_metadata
 from cinder.api.v1 import volumes
+from cinder.api.v1 import backends
 from cinder.api import versions
 from cinder.openstack.common import log as logging
 
@@ -52,6 +53,12 @@ class APIRouter(cinder.api.openstack.APIRouter):
                         collection={'detail': 'GET'},
                         member={'action': 'POST'})
 
+        self.resources['backends'] = backends.create_resource(ext_mgr)
+        mapper.resource("backend", "backends",
+                        controller=self.resources['backends'],
+                        collection={'detail': 'GET'},
+                        member={'action': 'POST'})
+       
         self.resources['types'] = types.create_resource()
         mapper.resource("type", "types",
                         controller=self.resources['types'])

@@ -51,7 +51,7 @@ LOG = logging.getLogger(__name__)
 class SchedulerManager(manager.Manager):
     """Chooses a host to create volumes."""
 
-    RPC_API_VERSION = '1.5'
+    RPC_API_VERSION = '1.6'
 
     target = messaging.Target(version=RPC_API_VERSION)
 
@@ -75,6 +75,9 @@ class SchedulerManager(manager.Manager):
     def init_host(self):
         ctxt = context.get_admin_context()
         self.request_service_capabilities(ctxt)
+
+    def get_backend_data(self, context, topic):
+        return self.driver.get_backend_data()
 
     def update_service_capabilities(self, context, service_name=None,
                                     host=None, capabilities=None, **kwargs):

@@ -17,6 +17,7 @@
 import datetime
 
 from lxml import etree
+import mock
 from oslo.config import cfg
 import six.moves.urllib.parse as urlparse
 import webob
@@ -1322,6 +1323,32 @@ class VolumeApiTest(test.TestCase):
                          {'key': 'value',
                           'attached_mode': 'visible',
                           'readonly': 'visible'})
+
+    @mock.patch('cinder.utils.add_visible_admin_metadata')
+    @mock.patch('cinder.volume.api.API.get_all')
+    def test_get_volumes_filter_with_string(self, get_all, add_meta):
+        req = mock.MagicMock()
+        context = mock.Mock()
+        req.environ = {'cinder.context': context}
+        req.params = {'display_name': 'Volume-573108026'}
+        self.controller._view_builder.detail_list = mock.Mock()
+        self.controller._get_volumes(req, True)
+        get_all.assert_any_call(context, None, None, 'created_at', 'desc',
+                                {'display_name': 'Volume-573108026'},
+                                viewable_admin_meta=True)
+
+    @mock.patch('cinder.utils.add_visible_admin_metadata')
+    @mock.patch('cinder.volume.api.API.get_all')
+    def test_get_volumes_filter_with_list(self, get_all, add_meta):
+        req = mock.MagicMock()
+        context = mock.Mock()
+        req.environ = {'cinder.context': context}
+        req.params = {'id': "['1', '2', '3']"}
+        self.controller._view_builder.detail_list = mock.Mock()
+        self.controller._get_volumes(req, True)
+        get_all.assert_any_call(context, None, None, 'created_at', 'desc',
+                                {'id': ['1', '2', '3']},
+                                viewable_admin_meta=True)
 
 
 class VolumeSerializerTest(test.TestCase):

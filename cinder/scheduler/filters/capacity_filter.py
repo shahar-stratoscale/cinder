@@ -37,6 +37,7 @@ class CapacityFilter(filters.BaseHostFilter):
             return True
 
         volume_size = filter_properties.get('size')
+        LOG.debug("strato - host_state: %s", str(host_state))
 
         if host_state.free_capacity_gb is None:
             # Fail Safe

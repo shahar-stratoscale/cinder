@@ -38,6 +38,7 @@ class SchedulerAPI(object):
         1.3 - Add migrate_volume_to_host() method
         1.4 - Add retype method
         1.5 - Add manage_existing method
+        1.6 - Add get_backend_data
     '''
 
     RPC_API_VERSION = '1.0'
@@ -46,7 +47,7 @@ class SchedulerAPI(object):
         super(SchedulerAPI, self).__init__()
         target = messaging.Target(topic=CONF.scheduler_topic,
                                   version=self.RPC_API_VERSION)
-        self.client = rpc.get_client(target, version_cap='1.5')
+        self.client = rpc.get_client(target, version_cap='1.6')
 
     def create_volume(self, ctxt, topic, volume_id, snapshot_id=None,
                       image_id=None, request_spec=None,
@@ -105,3 +106,7 @@ class SchedulerAPI(object):
         cctxt.cast(ctxt, 'update_service_capabilities',
                    service_name=service_name, host=host,
                    capabilities=capabilities)
+
+    def get_backend_data(self, ctxt, topic):
+        cctxt = self.client.prepare(version='1.6')
+        return cctxt.call(ctxt, 'get_backend_data', topic=topic)

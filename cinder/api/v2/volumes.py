@@ -118,7 +118,7 @@ class CommonDeserializer(wsgi.MetadataXMLDeserializer):
 
         attributes = ['name', 'description', 'size',
                       'volume_type', 'availability_zone', 'imageRef',
-                      'snapshot_id', 'source_volid']
+                      'snapshot_id', 'source_volid', 'set_bootable']
         for attr in attributes:
             if volume_node.getAttribute(attr):
                 volume[attr] = volume_node.getAttribute(attr)
@@ -222,8 +222,11 @@ class VolumeController(wsgi.Controller):
             filters['display_name'] = filters['name']
             del filters['name']
 
-        if 'metadata' in filters:
-            filters['metadata'] = ast.literal_eval(filters['metadata'])
+        for k, v in filters.iteritems():
+            try:
+                filters[k] = ast.literal_eval(v)
+            except (ValueError, SyntaxError):
+                LOG.debug('Could not evaluate value %s, assuming string', v)
 
         volumes = self.volume_api.get_all(context, marker, limit, sort_key,
                                           sort_dir, filters,
@@ -336,6 +339,7 @@ class VolumeController(wsgi.Controller):
             if image_href:
                 image_uuid = self._image_uuid_from_href(image_href)
                 kwargs['image_id'] = image_uuid
+                kwargs['set_bootable'] = volume.get('set_bootable', True)
 
         kwargs['availability_zone'] = volume.get('availability_zone', None)
         kwargs['scheduler_hints'] = volume.get('scheduler_hints', None)

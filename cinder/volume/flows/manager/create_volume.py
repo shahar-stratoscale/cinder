@@ -207,7 +207,7 @@ class ExtractVolumeSpecTask(flow_utils.CinderTask):
     default_provides = 'volume_spec'
 
     def __init__(self, db):
-        requires = ['image_id', 'snapshot_id', 'source_volid']
+        requires = ['image_id', 'snapshot_id', 'source_volid', 'request_spec']
         super(ExtractVolumeSpecTask, self).__init__(addons=[ACTION],
                                                     requires=requires)
         self.db = db
@@ -258,6 +258,11 @@ class ExtractVolumeSpecTask(flow_utils.CinderTask):
             image_href = kwargs['image_id']
             image_service, image_id = get_remote_image_service(context,
                                                                image_href)
+            set_bootable = True
+            if kwargs.get('request_spec') and 'volume_properties' in kwargs['request_spec'] and 'set_bootable' in kwargs['request_spec']['volume_properties']:
+		flag = kwargs['request_spec']['volume_properties']['set_bootable']
+                if flag in [ False, 'False' ]:
+	            set_bootable = False
             specs.update({
                 'type': 'image',
                 'image_id': image_id,
@@ -271,6 +276,7 @@ class ExtractVolumeSpecTask(flow_utils.CinderTask):
                 # serialized, so we will have to recreate this object on
                 # demand in the future.
                 'image_service': image_service,
+                'set_bootable': set_bootable,
             })
 
         return specs
@@ -348,7 +354,8 @@ class CreateVolumeFromSpecTask(flow_utils.CinderTask):
                                " %(src_id)s metadata")
         src_type = None
         src_id = None
-        self._enable_bootable_flag(context, volume_id)
+        if kwargs.get('set_bootable', True) in [True, 'True']:
+            self._enable_bootable_flag(context, volume_id)
         try:
             if kwargs.get('snapshot_id'):
                 src_type = 'snapshot'
@@ -521,7 +528,7 @@ class CreateVolumeFromSpecTask(flow_utils.CinderTask):
 
     def _create_from_image(self, context, volume_ref,
                            image_location, image_id, image_meta,
-                           image_service, **kwargs):
+                           image_service, set_bootable, **kwargs):
         LOG.debug(_("Cloning %(volume_id)s from image %(image_id)s "
                     " at location %(image_location)s.") %
                   {'volume_id': volume_ref['id'],
@@ -557,7 +564,8 @@ class CreateVolumeFromSpecTask(flow_utils.CinderTask):
 
         self._handle_bootable_volume_glance_meta(context, volume_ref['id'],
                                                  image_id=image_id,
-                                                 image_meta=image_meta)
+                                                 image_meta=image_meta,
+                                                 set_bootable=set_bootable)
         return model_update
 
     def _create_raw_volume(self, context, volume_ref, **kwargs):

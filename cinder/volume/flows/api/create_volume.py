@@ -168,16 +168,12 @@ class ExtractVolumeRequestTask(flow_utils.CinderTask):
             func(size)
         return size
 
-    def _check_image_metadata(self, context, image_id, size):
+    def _extract_size_from_image(self, image_meta):
+        image_size = utils.as_int(image_meta['size'], quiet=False)
+        return (image_size + GB - 1) / GB
+
+    def _check_image_metadata(self, context, image_meta, size):
         """Checks image existence and validates that the image metadata."""
-
-        # Check image existence
-        if not image_id:
-            return
-
-        # NOTE(harlowja): this should raise an error if the image does not
-        # exist, this is expected as it signals that the image_id is missing.
-        image_meta = self.image_service.show(context, image_id)
 
         # Check image size is not larger than volume size.
         image_size = utils.as_int(image_meta['size'], quiet=False)
@@ -336,9 +332,15 @@ class ExtractVolumeRequestTask(flow_utils.CinderTask):
         # volume will remain available after we do this initial verification??
         snapshot_id = self._extract_snapshot(snapshot)
         source_volid = self._extract_source_volume(source_volume)
-        size = self._extract_size(size, source_volume, snapshot)
-
-        self._check_image_metadata(context, image_id, size)
+        if not image_id:
+            size = self._extract_size(size, source_volume, snapshot)
+        else:
+            # NOTE(harlowja): this should raise an error if the image does not
+            # exist, this is expected as it signals that the image_id is missing.
+            image_meta = self.image_service.show(context, image_id)
+            if size is None:
+                size = self._extract_size_from_image(image_meta)
+            self._check_image_metadata(context, image_meta, size)
 
         availability_zone = self._extract_availability_zone(availability_zone,
                                                             snapshot,
@@ -396,7 +398,7 @@ class EntryCreateTask(flow_utils.CinderTask):
     def __init__(self, db):
         requires = ['availability_zone', 'description', 'metadata',
                     'name', 'reservations', 'size', 'snapshot_id',
-                    'source_volid', 'volume_type_id', 'encryption_key_id']
+                    'source_volid', 'volume_type_id', 'encryption_key_id', 'set_bootable']
         super(EntryCreateTask, self).__init__(addons=[ACTION],
                                               requires=requires)
         self.db = db
@@ -428,6 +430,9 @@ class EntryCreateTask(flow_utils.CinderTask):
         # of the volume property fields (if applicable).
         volume_properties.update(kwargs)
         volume = self.db.volume_create(context, volume_properties)
+        # To create non-bootable volumes from images, we need to pass this
+        # flag all the way to the manager
+        volume_properties['set_bootable'] = kwargs['set_bootable']
 
         return {
             'volume_id': volume['id'],

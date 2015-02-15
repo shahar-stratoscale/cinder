@@ -292,6 +292,11 @@ def snapshot_data_get_for_project(context, project_id, volume_type_id=None):
                                               volume_type_id)
 
 
+def snapshot_data_get_for_host(context, host):
+    """Get count and gigabytes used for snapshots for specified host."""
+    return IMPL.snapshot_data_get_for_host(context, host)
+
+
 def snapshot_get_active_by_window(context, begin, end=None, project_id=None):
     """Get all the snapshots inside the window.
 

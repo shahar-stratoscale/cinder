@@ -134,7 +134,7 @@ class API(base.Base):
     def create(self, context, size, name, description, snapshot=None,
                image_id=None, volume_type=None, metadata=None,
                availability_zone=None, source_volume=None,
-               scheduler_hints=None, backup_source_volume=None):
+               scheduler_hints=None, backup_source_volume=None, set_bootable=True):
 
         if source_volume and volume_type:
             if volume_type['id'] != source_volume['volume_type_id']:
@@ -172,6 +172,7 @@ class API(base.Base):
             'scheduler_hints': scheduler_hints,
             'key_manager': self.key_manager,
             'backup_source_volume': backup_source_volume,
+            'set_bootable': set_bootable,
         }
 
         try:

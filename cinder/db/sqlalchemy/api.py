@@ -28,7 +28,7 @@ import warnings
 from oslo.config import cfg
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_
-from sqlalchemy.orm import joinedload, joinedload_all
+from sqlalchemy.orm import joinedload, joinedload_all, contains_eager
 from sqlalchemy.orm import RelationshipProperty
 from sqlalchemy.sql.expression import literal_column
 from sqlalchemy.sql import func
@@ -1686,6 +1686,19 @@ def _snapshot_data_get_for_project(context, project_id, volume_type_id=None,
 @require_context
 def snapshot_data_get_for_project(context, project_id, volume_type_id=None):
     return _snapshot_data_get_for_project(context, project_id, volume_type_id)
+
+
+@require_context
+def snapshot_data_get_for_host(context, host):
+    query = model_query(context,
+                        func.count(models.Snapshot.id),
+                        func.sum(models.Snapshot.volume_size),
+                        read_deleted="no")
+    query = query.join('volume').filter_by(host=host)
+    result = query.first()
+
+    # NOTE(vish): convert None to 0
+    return (result[0] or 0, result[1] or 0)
 
 
 @require_context

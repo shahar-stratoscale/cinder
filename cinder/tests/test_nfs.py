@@ -515,9 +515,12 @@ class NfsDriverTestCase(test.TestCase):
         mox.StubOutWithMock(drv, '_ensure_shares_mounted')
         drv._ensure_shares_mounted()
 
+        volume = DumbVolume()
+        mox.StubOutWithMock(drv, '_get_provider_location')
+        drv._get_provider_location(volume).AndReturn(self.TEST_NFS_EXPORT1)
+
         mox.ReplayAll()
 
-        volume = DumbVolume()
         volume['size'] = self.TEST_SIZE_IN_GB
         drv.create_volume(volume)
 
@@ -532,12 +535,12 @@ class NfsDriverTestCase(test.TestCase):
         self.stub_out_not_replaying(drv, '_ensure_shares_mounted')
         self.stub_out_not_replaying(drv, '_do_create_volume')
 
-        mox.StubOutWithMock(drv, '_find_share')
-        drv._find_share(self.TEST_SIZE_IN_GB).AndReturn(self.TEST_NFS_EXPORT1)
+        volume = DumbVolume()
+        mox.StubOutWithMock(drv, '_get_provider_location')
+        drv._get_provider_location(volume).AndReturn(self.TEST_NFS_EXPORT1)
 
         mox.ReplayAll()
 
-        volume = DumbVolume()
         volume['size'] = self.TEST_SIZE_IN_GB
         result = drv.create_volume(volume)
         self.assertEqual(self.TEST_NFS_EXPORT1, result['provider_location'])

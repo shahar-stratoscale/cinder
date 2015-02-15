@@ -25,7 +25,10 @@ from cinder.api.views import types as views_types
 from cinder import exception
 from cinder import rpc
 from cinder.volume import volume_types
+from cinder.openstack.common import log as logging
 
+
+LOG = logging.getLogger(__name__)
 
 authorize = extensions.extension_authorizer('volume', 'types_manage')
 
@@ -51,6 +54,8 @@ class VolumeTypesManageController(wsgi.Controller):
         vol_type = body['volume_type']
         name = vol_type.get('name', None)
         specs = vol_type.get('extra_specs', {})
+
+        LOG.debug("strato - creating volume type. name:%s", name)
 
         if name is None or name == "":
             raise webob.exc.HTTPBadRequest()

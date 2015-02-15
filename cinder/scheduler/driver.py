@@ -80,3 +80,7 @@ class Scheduler(object):
     def schedule_create_volume(self, context, request_spec, filter_properties):
         """Must override schedule method for scheduler to work."""
         raise NotImplementedError(_("Must implement schedule_create_volume"))
+
+    def get_backend_data(self):
+        """Returns the data of all the backups, or of a specific backup"""
+        return self.host_manager.get_backend_data()

@@ -27,6 +27,8 @@ from cinder.openstack.common import processutils as putils
 from cinder import units
 from cinder import utils
 from cinder.volume import driver
+from cinder.volume import volume_types
+from cinder import context
 
 VERSION = '1.1.0'
 
@@ -88,8 +90,10 @@ class RemoteFsDriver(driver.VolumeDriver):
     """Common base for drivers that work like NFS."""
 
     VERSION = "0.0.0"
+    FAKE_GLOBAL_CAPACITY_IN_GB = 10000
 
     def __init__(self, *args, **kwargs):
+        self.shares = {}
         super(RemoteFsDriver, self).__init__(*args, **kwargs)
         self.shares = {}
         self._mounted_shares = []
@@ -136,7 +140,8 @@ class RemoteFsDriver(driver.VolumeDriver):
         """
         self._ensure_shares_mounted()
 
-        volume['provider_location'] = self._find_share(volume['size'])
+        nfs_share = self._get_provider_location(volume)
+        volume['provider_location'] = nfs_share
 
         LOG.info(_('casted to %s') % volume['provider_location'])
 
@@ -151,6 +156,8 @@ class RemoteFsDriver(driver.VolumeDriver):
         """
         volume_path = self.local_path(volume)
         volume_size = volume['size']
+
+        LOG.debug('Strato - creating volume file %s' % volume_path)
 
         if getattr(self.configuration,
                    self.driver_prefix + '_sparsed_volumes'):
@@ -296,6 +303,14 @@ class RemoteFsDriver(driver.VolumeDriver):
         with open(config_file) as f:
             return f.readlines()
 
+    def _split_share_into_name_and_opts(self, share_str):
+        share_info = share_str.split(None, 1)
+        # results in share_info =
+        #  [ 'address:/vol', '-o options=123,rw --other' ]
+        share_address = share_info[0].strip().decode('unicode_escape')
+        share_opts = share_info[1].strip() if len(share_info) > 1 else None
+        return share_address, share_opts
+
     def _load_shares_config(self, share_file):
         self.shares = {}
 
@@ -310,12 +325,7 @@ class RemoteFsDriver(driver.VolumeDriver):
             if share.startswith('#'):
                 continue
 
-            share_info = share.split(' ', 1)
-            # results in share_info =
-            #  [ 'address:/vol', '-o options=123,rw --other' ]
-
-            share_address = share_info[0].strip().decode('unicode_escape')
-            share_opts = share_info[1].strip() if len(share_info) > 1 else None
+            share_address, share_opts = self._split_share_into_name_and_opts(share)
 
             if not re.match(r'.+:/.+', share_address):
                 LOG.warn("Share %s ignored due to invalid format.  Must be of "
@@ -361,6 +371,10 @@ class RemoteFsDriver(driver.VolumeDriver):
             capacity, free, used = self._get_capacity_info(share)
             global_capacity += capacity
             global_free += free
+
+        if len(self._mounted_shares) == 0:
+            global_capacity = RemoteFsDriver.FAKE_GLOBAL_CAPACITY_IN_GB * float(units.GiB)
+            global_free = RemoteFsDriver.FAKE_GLOBAL_CAPACITY_IN_GB * float(units.GiB)
 
         data['total_capacity_gb'] = global_capacity / float(units.GiB)
         data['free_capacity_gb'] = global_free / float(units.GiB)
@@ -572,3 +586,55 @@ class NfsDriver(RemoteFsDriver):
 
     def _get_mount_point_base(self):
         return self.base
+
+    def _get_volume_specific_share(self, volume):
+        ctxt = context.get_admin_context()
+        try:
+            type_id = volume.get('volume_type_id')
+        except Exception as e:
+            LOG.warning('Strato - Cannot get type_id. Message: %s' % e)
+            return None
+
+        try:
+            volume_type = volume_types.get_volume_type(ctxt, type_id)
+            specs = volume_type.get('extra_specs')
+        except Exception as e:
+            LOG.exception('Strato - cannot get extra_specs. Message: %s' % e)
+            return None
+
+        nfs_share = specs.get('nfs:nfs_share')
+        if nfs_share is None:
+            LOG.warn('Strato - no nfs:nfs_share in extra specs')
+
+        return nfs_share
+
+    def _verify_specific_share_mounted(self, nfs_share):
+        if nfs_share not in self.shares:
+            msg = 'nfs_share (%s) was not mounted' % nfs_share
+            LOG.error('Strato - %s' % msg)
+            raise exception.NfsException(msg)
+
+    def _install_specific_share(self, nfs_share):
+        shares_config_file = getattr(self.configuration,
+                                     self.driver_prefix +
+                                     '_shares_config')
+        self._load_shares_config(shares_config_file)
+        share_address, _ = self._split_share_into_name_and_opts(nfs_share)
+
+        if share_address not in self.shares:
+            # write() to file failed on permission, and echo to file with redirection did not work
+            self._execute('sed', "-i",  "$a " + nfs_share, shares_config_file, run_as_root=True)
+            self._ensure_shares_mounted()
+
+    def _get_provider_location(self, volume):
+        size = volume['size']
+        nfs_share = self._get_volume_specific_share(volume)
+        if nfs_share is not None:
+            self._install_specific_share(nfs_share)
+            self._verify_specific_share_mounted(nfs_share)
+            if self._is_share_eligible(nfs_share, size):
+                return nfs_share
+
+        # no eligible, mounted share found
+        raise exception.NfsNoSuitableShareFound(
+            volume_size=size)

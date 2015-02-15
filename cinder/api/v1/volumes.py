@@ -29,6 +29,7 @@ from cinder import utils
 from cinder import volume as cinder_volume
 from cinder.volume import utils as volume_utils
 from cinder.volume import volume_types
+from cinder.scheduler import rpcapi as scheduler_rpcapi
 
 
 LOG = logging.getLogger(__name__)
@@ -111,8 +112,6 @@ def _translate_volume_summary_view(context, vol, image_id=None):
     if image_id:
         d['image_id'] = image_id
 
-    LOG.audit(_("vol=%s"), vol, context=context)
-
     if vol.get('volume_metadata'):
         metadata = vol.get('volume_metadata')
         d['metadata'] = dict((item['key'], item['value']) for item in metadata)
@@ -189,7 +188,7 @@ class CommonDeserializer(wsgi.MetadataXMLDeserializer):
 
         attributes = ['display_name', 'display_description', 'size',
                       'volume_type', 'availability_zone', 'imageRef',
-                      'snapshot_id', 'source_volid']
+                      'snapshot_id', 'source_volid', 'set_bootable']
         for attr in attributes:
             if volume_node.getAttribute(attr):
                 volume[attr] = volume_node.getAttribute(attr)
@@ -220,6 +219,7 @@ class VolumeController(wsgi.Controller):
 
     def __init__(self, ext_mgr):
         self.volume_api = cinder_volume.API()
+        self.scheduler_rpcapi = scheduler_rpcapi.SchedulerAPI()
         self.ext_mgr = ext_mgr
         super(VolumeController, self).__init__()
 
@@ -269,8 +269,11 @@ class VolumeController(wsgi.Controller):
         search_opts.pop('limit', None)
         search_opts.pop('offset', None)
 
-        if 'metadata' in search_opts:
-            search_opts['metadata'] = ast.literal_eval(search_opts['metadata'])
+        for k, v in search_opts.iteritems():
+            try:
+                search_opts[k] = ast.literal_eval(v)
+            except (ValueError, SyntaxError):
+                LOG.debug('Could not evaluate value %s, assuming string', v)
 
         context = req.environ['cinder.context']
         remove_invalid_options(context,
@@ -375,9 +378,9 @@ class VolumeController(wsgi.Controller):
             if image_href:
                 image_uuid = self._image_uuid_from_href(image_href)
                 kwargs['image_id'] = image_uuid
+                kwargs['set_bootable'] = volume.get('set_bootable', True)
 
         kwargs['availability_zone'] = volume.get('availability_zone', None)
-
         new_volume = self.volume_api.create(context,
                                             size,
                                             volume.get('display_name'),

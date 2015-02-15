@@ -321,3 +321,7 @@ class HostManager(object):
             del self.host_state_map[host]
 
         return self.host_state_map.itervalues()
+
+    def get_backend_data(self):
+        """ Returns a dict of all the backends data in all the host """
+        return self.service_states
